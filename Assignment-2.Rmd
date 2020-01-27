@@ -1,0 +1,54 @@
+---
+title: "Assignment-2"
+author: "Pete Cuppernull"
+date: "1/27/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###Load Packages
+```{r}
+library(tidyverse)
+```
+
+# 1. The Bayes Classifier
+
+```{r}
+##Set Seed
+set.seed(1414)
+
+##Create Dataset
+#Create x1 and x2
+x1 <- runif(200, -1, 1)
+x2 <- runif(200, -1, 1)
+
+#Turn into DFs
+data <- as.data.frame(x1) 
+x2 <- as.data.frame(x2) 
+
+#Create ID columns
+data$obs <- seq.int(nrow(data))
+x2$obs <- seq.int(nrow(x2))
+
+#Join columns
+data <- data %>%
+  left_join(x2) %>%
+  select(obs, x1, x2)
+
+head(data)
+
+##Calculate Y = ...
+#Create error column
+error <- rnorm(200, 0, 0.25)
+error <- as.data.frame(error)
+error$obs <- seq.int(nrow(error))
+
+#Join error and calculate Y
+data <- data %>%
+  left_join(error) %>%
+  mutate(Y = x1 + x1^2 + x2 + x2^2 + error)
+```
+
