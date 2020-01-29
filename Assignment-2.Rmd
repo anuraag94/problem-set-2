@@ -12,6 +12,12 @@ knitr::opts_chunk$set(echo = TRUE)
 ###Load Packages
 ```{r}
 library(tidyverse)
+library(broom) 
+library(rsample) 
+library(patchwork)
+library(corrplot)
+library(ISLR)
+library(caret)
 ```
 
 # 1. The Bayes Classifier
@@ -51,7 +57,93 @@ data <- data %>%
   left_join(error) %>%
   mutate(Y = x1 + x1^2 + x2 + x2^2 + error)
 
+ggplot(data, aes(Y)) +
+  geom_histogram()
 ##Calculate probabiltiy of success??
 ```
 
-2. 
+2. Differences between LDA and QDA
+A. 
+```{r}
+#Create x1 and x2
+
+create_data <- function(){
+x1 <- runif(1000, -1, 1)
+x2 <- runif(1000, -1, 1)
+
+#Turn into DFs
+data <- as.data.frame(x1) 
+x2 <- as.data.frame(x2) 
+
+#Create ID columns
+data$obs <- seq.int(nrow(data))
+x2$obs <- seq.int(nrow(x2))
+
+#Join columns
+data <- data %>%
+  left_join(x2) %>%
+  select(obs, x1, x2)
+
+#Create error column
+error <- rnorm(1000, 0, 1)
+error <- as.data.frame(error)
+error$obs <- seq.int(nrow(error))
+
+#Join error and calculate Y
+data1 <- data %>%
+  left_join(error) %>%
+  mutate(Y = x1 + x2 + error) %>%
+  mutate(class = if_else(Y>=0, 1, 0))
+
+data1
+}
+
+run_models <- function(iteration_number){
+  iteration <- iteration_number
+  ##create partitions
+split <- initial_split(create_data(), prop = .7) 
+train <- training(split)
+test <- testing(split)
+
+##run LDA and save error rates
+lda_m1 <- MASS::lda(class ~ x1 + x2, data = train)
+
+pred_lda_test <- predict(lda_m1, 
+                newdata = test)
+pred_lda_train <- predict(lda_m1, 
+                newdata = train)
+
+
+table_lda_test <- table(test$class,pred_lda_test$class)
+table_lda_train <- table(train$class,pred_lda_train$class)
+
+error_lda_test <- sum(table_lda_test[row(table_lda_test) != col(table_lda_test)]) / sum(table_lda_test)
+error_lda_train <- sum(table_lda_train[row(table_lda_train) != col(table_lda_train)]) / sum(table_lda_train)
+
+##run DDA and save error rates
+qda_m1 <- MASS::qda(class ~ x1 + x2, data = train)
+
+pred_qda_test <- predict(qda_m1, 
+                newdata = test)
+pred_qda_train <- predict(qda_m1, 
+                newdata = train)
+
+table_qda_test <- table(test$class,pred_qda_test$class)
+table_qda_train <- table(train$class,pred_qda_train$class)
+
+error_qda_test <- sum(table_qda_test[row(table_qda_test) != col(table_qda_test)]) / sum(table_qda_test)
+error_qda_train <- sum(table_qda_train[row(table_qda_train) != col(table_qda_train)]) / sum(table_qda_train)
+
+#Collect results
+results <- as.data.frame(rbind(c(iteration, error_lda_train, error_lda_test, error_qda_train, error_qda_test)))
+
+colnames(results) <- c("iteration", "LDA Training Error", "LDA Test Error", "QDA Training Error", "QDA Test Error")
+results
+}
+
+run_models(2)
+##Run 1000 sims
+final_results <- map_dfr(1:1000, run_models)
+colMeans(final_results)
+```
+
