@@ -1,0 +1,295 @@
+---
+title: "Modeling PS2"
+author: "borui sun"
+date: "1/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(rsample)
+library(MASS)
+library(e1071)
+```
+
+### The Bayes Classifier
+
+1. (20 points) For classification problems, the test error rate is minimized by a simple classifier that assigns each observation to the most likely class given its predictor values:
+
+    $$\Pr(Y = j | X = x_0)$$
+    
+    where $x_0$ is the test observation and each possible class is represented by $J$. This is a **conditional probability** that $Y = j$, given the observed predictor vector $x_0$. This classifier is known as the **Bayes classifier**. If the response variable is binary (i.e. two classes), the Bayes classifier corresponds to predicting class one if $\Pr(Y = 1 | X = x_0) > 0.5$, and class two otherwise.
+    
+    Produce a graph illustrating this concept. Specifically, implement the following elements in your program:
+        
+    a. Set your random number generator seed.
+    a. Simulate a dataset of $N = 200$ with $X_1, X_2$ where $X_1, X_2$ are random uniform variables between $[-1,1]$.
+    a. Calculate $Y = X_1 + X_1^2 + X_2 + X_2^2 + \epsilon$, where $\epsilon \sim N(\mu = 0, \sigma^2 = 0.25)$.
+    a. $Y$ is defined in terms of the log-odds of success on the domain $[-\infty, +\infty]$. Calculate the probability of success bounded between $[0,1]$.
+    a. Plot each of the data points on a graph and use color to indicate if the observation was a success or a failure.
+    a. Overlay the plot with Bayes decision boundary, calculated using $X_1, X_2$.
+    a. Give your plot a meaningful title and axis labels.
+    a. The colored background grid is optional.
+ 
+
+```{r}
+set.seed(123)
+
+N = 200
+
+simu_sample <- data.frame(
+    x1 = runif(N, -1, 1),
+    x2 = runif(N, -1, 1),
+    epsilon = rnorm(N, mean = 0, sd = sqrt(0.25)) # sd = sigma
+) %>%
+    mutate(y = x1 + x1^2 + x2 + x2^2 + epsilon,
+           pr = exp(y)/(1 + exp(y)), # as y <- log(pr/(1-pr))
+           class = as.numeric(pr > 0.5))
+```
+
+
+```{r}
+simu_sample
+```
+
+
+```{r}
+bayes <- naiveBayes(as.factor(class) ~ x1 + x2, simu_sample)
+
+sample_grid<- expand.grid(x1 = seq(-1, 1, length.out = 40), x2 = seq(-1, 1, length.out = 40))
+
+sample_grid$class <- predict(bayes, sample_grid, type = "class") # default 0.5 for binomial
+sample_grid %>% head()
+
+ggplot() + 
+    geom_point(data = sample_grid, aes(x = x1, y = x2, color = as.factor(class)), alpha = 0.5, size = 0.5) +
+    geom_point(data = simu_sample, aes(x = x1, y = x2, color =  as.factor(class))) +
+    geom_contour(data = sample_grid, aes(x = x1, y = x2, z = as.numeric(class)),  bins = 2, binwidth = 0.01) +
+    labs(title = "Bayes Decision Boundary", color = "class") +
+    theme_bw()
+#
+?geom_contour
+
+sample_grid<- expand.grid(x1 = seq(-1, 1, length.out = 40), x2 = seq(-1, 1, length.out = 40))
+
+sample_grid$z <- predict(bayes, sample_grid, type = "class") # default 0.5 for binomial
+sample_grid %>% head()
+
+
+```
+
+2. (20 points) If the Bayes decision boundary is linear, do we expect LDA or QDA to perform better on the training set? On the test set?
+
+    a. Repeat the following process 1000 times.
+        i. Simulate a dataset of 1000 observations with $X_1, X_2 \sim \text{Uniform}(-1, +1)$. $Y$ is a binary response variable defined by a Bayes decision boundary of $f(X) = X_1 + X_2$, where values 0 or greater are coded `TRUE` and values less than 0 or coded `FALSE`. Whereas your simulated $Y$ is a function of $X_1 + X_2 + \epsilon$ where $\epsilon \sim N(0, 1)$. That is, your simulated $Y$ is a function of the Bayes decision boundary plus some irreducible error.
+        ii. Randomly split your dataset into 70/30% training/test sets.
+        iii. Use the training dataset to estimate LDA and QDA models.
+        iv. Calculate each model's training and test error rate.
+        
+    b. Summarize all the simulations' error rates and report the results in tabular and graphical form. Use this evidence to support your answer.
+
+```{r}
+N <- 1000
+
+x1 <- runif(N, -1, 1)
+x2 <- runif(N, -1, 1)
+
+epsilon <- rnorm(N, mean = 0, sd = 1)
+
+y <- x1 + x2 + epsilon
+
+sample_linear <- data.frame(y, x1, x2) %>%
+    mutate(class = y >= 0)
+split <- initial_split(sample_linear, prop = .7)
+train <- training(split)
+test <- testing(split)
+
+(lda <- MASS::lda(class ~ x1 + x2, data = train))
+
+predict(lda, train) %>%
+    {.$class} %>%
+    confusionMatrix(as.factor(train$class))
+
+predict(lda, test) %>%
+    {.$class} %>%
+    confusionMatrix(as.factor(test$class))
+
+(qda <- MASS::qda(class ~ x1 + x2, data = train))
+
+predict(qda, train) %>%
+    {.$class} %>%
+    confusionMatrix(as.factor(train$class))
+
+predict(qda, test) %>%
+    {.$class} %>%
+    confusionMatrix(as.factor(test$class))
+```
+
+```{r}
+error_rate <- function(model, data, outcome){
+    
+    accuracy <- predict(model, data) %>%
+        {.$class} %>%
+        confusionMatrix(as.factor(data[[outcome]])) %>%
+        {.$overall[1]}
+    
+    return(1 - accuracy)
+}
+
+repetition <- 1000
+
+results_linear <- data.frame(matrix(nrow = 0, ncol = 0))
+
+for (i in 1: repetition){
+    
+    N <- 1000 
+    
+    x1 <- runif(N, -1, 1)
+    x2 <- runif(N, -1, 1)
+    
+    epsilon <- rnorm(N, mean = 0, sd = 1)
+    
+    y <- x1 + x2 + epsilon
+    
+    sample <- data.frame(y, x1, x2) %>%
+        mutate(class = y >= 0)
+    
+    split <- initial_split(sample_linear, prop = .7)
+    train <- training(split)
+    test <- testing(split)
+    
+    lda <- MASS::lda(class ~ x1 + x2, data = train)
+    
+    lda_train_error <- error_rate(lda, train, "class")
+    lda_test_error <- error_rate(lda, test, "class")
+    
+    qda <- MASS::qda(class ~ x1 + x2, data = train)
+    
+    qda_train_error <- error_rate(qda, train, "class")
+    qda_test_error <- error_rate(qda, test, "class")
+    
+    id <- i
+    simulation_result <- data.frame(id, lda_train_error, lda_test_error,
+                                    qda_train_error, qda_test_error)
+    
+    results <- bind_rows(results, simulation_result)
+}
+
+summary(results)
+
+results %>% pivot_longer(
+    cols = ends_with("error"),
+    names_to = c("model", "data"),
+    names_pattern = "(.*)_(.*)_error$",
+    values_to = "error rate"
+) %>% 
+    ggplot(aes(x = `error rate`, fill = model)) +
+    geom_histogram() +
+    facet_wrap(~data)
+    
+```
+    
+
+
+
+3. (20 points) If the Bayes decision boundary is non-linear, do we expect LDA or QDA to perform better on the training set? On the test set?
+
+    a. Repeat the following process 1000 times.
+        i. Simulate a dataset of 1000 observations with $X_1, X_2 \sim \text{Uniform}(-1, +1)$. $Y$ is a binary response variable defined by a Bayes decision boundary of $f(X) = X_1 + X_1^2 + X_2 + X_2^2$, where values 0 or greater are coded `TRUE` and values less than 0 or coded `FALSE`. Whereas your simulated $Y$ is a function of $X_1 + X_1^2 + X_2 + X_2^2 + \epsilon$ where $\epsilon \sim N(0, 1)$. That is, your simulated $Y$ is a function of the Bayes decision boundary plus some irreducible error.
+        ii. Randomly split your dataset into 70/30% training/test sets.
+        iii. Use the training dataset to estimate LDA and QDA models.
+        iv. Calculate each model's training and test error rate.
+   
+    b. Summarize all the simulations' error rates and report the results in tabular and graphical form. Use this evidence to support your answer.
+    
+```{r}
+non_linear <- data.frame(matrix(nrow = 0, ncol = 0))
+
+for (i in 1: repetition){
+    
+    N <- 1000 
+    
+    x1 <- runif(N, -1, 1)
+    x2 <- runif(N, -1, 1)
+    
+    epsilon <- rnorm(N, mean = 0, sd = 1)
+    
+    y <- x1 + x1^2 + x2 + x2^2 + epsilon
+    
+    sample <- data.frame(y, x1, x2) %>%
+        mutate(class = y >= 0)
+    
+    split <- initial_split(sample_linear, prop = .7)
+    train <- training(split)
+    test <- testing(split)
+    
+    lda <- MASS::lda(class ~ x1 + x2, data = train)
+    
+    lda_train_error <- error_rate(lda, train, "class")
+    lda_test_error <- error_rate(lda, test, "class")
+    
+    qda <- MASS::qda(class ~ x1 + x2, data = train)
+    
+    qda_train_error <- error_rate(qda, train, "class")
+    qda_test_error <- error_rate(qda, test, "class")
+    
+    id <- i
+    simulation_result <- data.frame(id, lda_train_error, lda_test_error,
+                                    qda_train_error, qda_test_error)
+    
+    non_linear <- bind_rows(non_linear, simulation_result)
+}
+
+summary(non_linear)
+
+non_linear %>% pivot_longer(
+    cols = ends_with("error"),
+    names_to = c("model", "data"),
+    names_pattern = "(.*)_(.*)_error$",
+    values_to = "error rate"
+) %>% 
+    ggplot(aes(x = `error rate`, fill = model)) +
+    geom_histogram(alpha = 0.5) +
+    facet_wrap(~data)
+    
+```
+
+
+4. (20 points) In general, as sample size $n$ increases, do we expect the test error rate of QDA relative to LDA to improve, decline, or be unchanged? Why?
+    a. Use the non-linear Bayes decision boundary approach from part (2) and vary $n$ across your simulations (e.g., simulate 1000 times for `n = c(1e02, 1e03, 1e04, 1e05`).
+    b. Plot the test error rate for the LDA and QDA models as it changes over all of these values of $n$. _Use this graph to support your answer._
+    
+### Modeling voter turnout
+
+5. (20 points) Building several classifiers and comparing output.
+    a. Split the data into a training and test set (70/30).
+    b. Using the training set and all important predictors, estimate the following models with `vote96` as the response variable:
+        i. Logistic regression model
+        ii. Linear discriminant model
+        iii. Quadratic discriminant model
+        iv. Naive Bayes (you can use the default hyperparameter settings)
+        v. $K$-nearest neighbors with $K = 1,2,\dots,10$ (that is, 10 separate models varying $K$) and _Euclidean_ distance metrics
+    c. Using the test set, calculate the following model performance metrics:
+        i. Error rate
+        ii. ROC curve(s) / Area under the curve (AUC)
+    d. Which model performs the best? Be sure to define what you mean by "best" and identify supporting evidence to support your conclusion(s).
+
+```{r}
+mental_health <- read_csv("mental_health.csv")
+split <- initial_split(mental_health, prop = .7)
+train <- training(split)
+test <- testing(split)
+
+# logistics regression
+logit <- glm(vote96~., train, family = "binomial")
+#lda
+lda <- lda(vote96~., train)
+#qda 
+qda <- qda(vote96~., train)
+#naive bayes
+bayes <- naiveBayes(vote96~., train)
+#knn 1- 10
+
+```
