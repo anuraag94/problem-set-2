@@ -18,10 +18,12 @@ library(patchwork)
 library(corrplot)
 library(ISLR)
 library(caret)
+library(class)
 ```
 
 # 1. The Bayes Classifier
 
+###Parts A-C - create data
 ```{r}
 ##Set Seed
 set.seed(1414)
@@ -59,8 +61,43 @@ data <- data %>%
 
 ggplot(data, aes(Y)) +
   geom_histogram()
-##Calculate probabiltiy of success??
 ```
+
+###d. 
+```{r}
+
+#Convert Ys to log-odds
+probability_function <- function(model){
+  odds <- exp(model)
+  probability <- odds / (1 + odds)
+  return(probability)
+}
+
+data_success <- data %>%
+  mutate(prob_success = probability_function(Y)) %>%
+  mutate(Success = as.factor(if_else(prob_success > 0.5, "Yes", "No")))
+
+###Create grid
+bg_1 <- as.data.frame(rep(seq(-1, 1, 0.05), 41))
+bg_2 <- as.data.frame(rep(seq(-1, 1, 0.05), each = 41))
+
+bg_grid <- cbind(bg_1, bg_2)
+colnames(bg_grid) <- c("X1", "X2")
+bg_grid <- bg_grid %>%
+  mutate(Y = X1 + X1^2 + X2 + X2^2) %>%
+  mutate(prob_success = probability_function(Y)) %>%
+  mutate(Success = as.factor(if_else(prob_success > 0.5, "Yes", "No")))
+  
+
+ggplot() +
+  geom_point(data = data_success, mapping = aes(x1, x2, color = Success)) +
+  geom_point(data = bg_grid, mapping = aes(X1, X2, color = Success), alpha = .15) +
+  labs(x = "X1",
+       y = "X2",
+       title = "Successes of Simulated Data")
+```
+
+JUST NEED TO OVERLAY DECISION BOUNDARY
 
 2. Differences between LDA and QDA
 A. 
