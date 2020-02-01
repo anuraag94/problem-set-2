@@ -87,17 +87,25 @@ bg_grid <- bg_grid %>%
   mutate(Y = X1 + X1^2 + X2 + X2^2) %>%
   mutate(prob_success = probability_function(Y)) %>%
   mutate(Success = as.factor(if_else(prob_success > 0.5, "Yes", "No")))
+
+bg_grid_cont <- bg_grid %>%
+  mutate(Y = X1 + X1^2 + X2 + X2^2) %>%
+  mutate(prob_success = probability_function(Y)) %>%
+  mutate(Success = if_else(prob_success > 0.5, 1, 0))
   
 
 ggplot() +
   geom_point(data = data_success, mapping = aes(x1, x2, color = Success)) +
   geom_point(data = bg_grid, mapping = aes(X1, X2, color = Success), alpha = .15) +
+  geom_contour(data = bg_grid_cont, mapping = aes(X1, X2, z = Success), size = .2) +
   labs(x = "X1",
        y = "X2",
        title = "Successes of Simulated Data")
-```
 
-JUST NEED TO OVERLAY DECISION BOUNDARY
+x <- ggplot(data = bg_grid, mapping = aes(X1, X2, z = Success))
+v <- ggplot(faithfuld, aes(waiting, eruptions, z = density))
+x + geom_contour()
+```
 
 2. Differences between LDA and QDA
 A. 
@@ -157,7 +165,7 @@ table_lda_train <- table(train$class,pred_lda_train$class)
 error_lda_test <- sum(table_lda_test[row(table_lda_test) != col(table_lda_test)]) / sum(table_lda_test)
 error_lda_train <- sum(table_lda_train[row(table_lda_train) != col(table_lda_train)]) / sum(table_lda_train)
 
-##run DDA and save error rates
+##run QDA and save error rates
 qda_m1 <- MASS::qda(class ~ x1 + x2, data = train)
 
 pred_qda_test <- predict(qda_m1, 
@@ -303,7 +311,7 @@ skimr::skim(final_results_NL)
 ```
 
 ##4
-```{r, eval=FALSE}
+```{r, warning=FALSE}
 create_data_NL_100 <- function(){
 x1 <- runif(100, -1, 1)
 x2 <- runif(100, -1, 1)
@@ -419,7 +427,7 @@ table_lda_train <- table(train$class,pred_lda_train$class)
 error_lda_test <- sum(table_lda_test[row(table_lda_test) != col(table_lda_test)]) / sum(table_lda_test)
 error_lda_train <- sum(table_lda_train[row(table_lda_train) != col(table_lda_train)]) / sum(table_lda_train)
 
-##run DDA and save error rates
+##run QDA and save error rates
 qda_m1 <- MASS::qda(class ~ x1 + x1^2 + x2 + x2^2, data = train)
 
 pred_qda_test <- predict(qda_m1, 
@@ -526,23 +534,46 @@ colnames(results) <- c("iteration", "LDA Training Error", "LDA Test Error", "QDA
 results
 }
 
-##10 obs
-final_results_NL_100 <- map_dfr(1:100, run_models_NL_100)
+##100 obs
+final_results_NL_100 <- map_dfr(1:1000, run_models_NL_100)
 
-final_results_NL_100 <- final_results_NL_100 %>%
+ final_results_NL_100 <- final_results_NL_100 %>%
   select(-iteration)
 ##1000 obs
 final_results_NL
 ##10000 obs
-final_results_NL_10000 <- map_dfr(1:10000, run_models_NL_10000)
+final_results_NL_10000 <- map_dfr(1:1000, run_models_NL_10000)
 
 final_results_NL_10000 <- final_results_NL_10000 %>%
   select(-iteration)
 ##100000 obs
-final_results_NL_100000 <- map_dfr(1:100000, run_models_NL_100000)
+final_results_NL_100000 <- map_dfr(1:1000, run_models_NL_100000)
 
 final_results_NL_100000 <- final_results_NL_100000 %>%
   select(-iteration)
+```
+
+##4b - Plot error rates
+
+```{r}
+final_results_NL_100
+cols <- c("LDA Test Error (1000)" = "aquamarine3", "QDA Test Error (1000)" = "aquamarine4",
+          "LDA Test Error (100)" = "tomato1", "QDA Test Error (100)" = "tomato4")
+ggplot() +
+  geom_density(data = final_results_NL, mapping = aes(`LDA Test Error`, color = "LDA Test Error (1000)"), alpha = .25) +
+  geom_vline(data = final_results_NL, mapping = aes(xintercept = mean(`LDA Test Error`), color = "LDA Test Error (1000)"), size = 1.2) +
+  geom_density(data = final_results_NL, mapping = aes(`QDA Test Error`, color = "QDA Test Error (1000)"), alpha = .25) +
+  geom_vline(data = final_results_NL, mapping = aes(xintercept = mean(`QDA Test Error`), color = "QDA Test Error (1000)"), size = 1.2) +
+    geom_density(data = final_results_NL_100, mapping = aes(`LDA Test Error`, color = "LDA Test Error (100)"), alpha = .25) +
+  geom_vline(data = final_results_NL_100, mapping = aes(xintercept = mean(`LDA Test Error`), color = "LDA Test Error (100)"), size = 1.2) +
+  geom_density(data = final_results_NL_100, mapping = aes(`QDA Test Error`, color = "QDA Test Error (100)"), alpha = .25) +
+  geom_vline(data = final_results_NL_100, mapping = aes(xintercept = mean(`QDA Test Error`), color = "QDA Test Error (100)"), size = 1.2) +
+  scale_color_manual(values = cols) +
+  labs(title = "Distribution of LDA and QDA training and test Error Rates",
+       subtitle = "Mean denoted by vertical line",
+       x = "Error Rate",
+       y = "Frequency",
+       legend = "Model")
 ```
 
 ##5 Voter Turnout
@@ -563,7 +594,7 @@ train_mh <- training(split_mh)
 test_mh <- testing(split_mh)
 ```
 
-##Models
+## Run All Models
 ```{r}
 library(rcfss) # logit2prob function
 library(tidymodels) # accuracy function
@@ -575,7 +606,7 @@ mh_logit_error <- augment(mh_logit, newdata = test_mh) %>%
          .pred = factor(round(.prob))) %>%
   accuracy(truth = vote96, estimate = .pred)
 
-accuracy_logit <- 1 - mh_logit_error$.estimate
+error_logit <- 1 - mh_logit_error$.estimate
 
 ##LDA
 lda_mh <- MASS::lda(vote96 ~ ., data = train_mh)
@@ -609,7 +640,7 @@ error_qda_train <- sum(table_qda_train_mh[row(table_qda_train_mh) != col(table_q
 
 ##Naive Bayes -- this isnt working for some reason
 # create response and feature data
-features <- setdiff(names(train_mh), "Vote") #setdiff(x,y) elements in x but not in y
+features <- setdiff(names(train_mh), "vote96") #setdiff(x,y) elements in x but not in y
 x <- train_mh[, features]
 y <- train_mh$vote96
 
@@ -627,13 +658,9 @@ mh_nb <- train(
   trControl = train_control
 )
 
-pred_mh <- predict(mh_nb, 
-                newdata = test_mh)
-
-confusionMatrix(pred_mh, test_mh$vote96)
 # results
-confusionMatrix(mh_nb)
-
+nb_matrix <- confusionMatrix(mh_nb)
+nb_error <- 1 - nb_matrix$table[1, 1] + nb_matrix$table[2, 2]
 ##KNN
 mse_knn_mh <- tibble(k = 1:10,
                   knn_train = map(k, ~ class::knn(select(train_mh, -vote96),
@@ -645,6 +672,8 @@ mse_knn_mh <- tibble(k = 1:10,
                   err_train = map_dbl(knn_train, ~ mean(test_mh$vote96 != .)),
                   err_test = map_dbl(knn_test, ~ mean(test_mh$vote96 != .)))
 
+mse_knn_mh
+
 ggplot(mse_knn_mh, aes(k, err_test)) +
   geom_line() +
   geom_hline(yintercept = 1 - titanic_logit_error$.estimate[[1]], linetype = 2) +
@@ -654,5 +683,32 @@ ggplot(mse_knn_mh, aes(k, err_test)) +
   theme_minimal()
 
 ```
+
+###Error Rates
+  - Logistic regression model: `r logit_error`
+  - Linear discriminant model: `r error_lda_test`
+  - Quadratic discriminant model: `r error_qda_test`
+  - Naive Bayes: `r nb_error`
+  
+###ROC/AOC
+```{r}
+library(pROC)
+#Logit
+mh_logit_train <- predict(mh_logit, 
+                newdata = train_mh)
+mh_logit_train$class
+test_mh
+
+#LDA
+lda_roc <- roc(as.numeric(train_mh$vote96), as.numeric(mh_lda_train$class))
+lda_auc <- auc(lda_roc)
+
+#QDA
+qda_roc <- roc(as.numeric(train_mh$vote96), as.numeric(mh_qda_train$class))
+qda_auc <- auc(qda_roc)
+
+
+```
+
 
 
