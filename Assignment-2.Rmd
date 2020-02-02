@@ -193,7 +193,6 @@ final_results_L <- map_dfr(1:1000, run_models)
 final_results_L <- final_results_L %>%
   select(-iteration)
 
-final_results_L
 ```
 
 
@@ -222,14 +221,14 @@ ggplot(final_results_L) +
        y = "Frequency",
        legend = "Model")
 ```
-We can observe that the LDA test error is slightly lower than the QDA test error, consistent with the notion that LDA models are prefered in cases on lienar Bayes deicison boundaries.
+We can observe that the LDA test error is slightly lower than the QDA test error, consistent with the notion that LDA models are prefered in cases on linear Bayes deicison boundaries. This is also a great example of the value of visualizing results -- the tabular report does not allow us to observe our results with the same nuance as the graphical report.
 
 
 ## Question 3
 ### Part A
 Conversely, in cases of non-linear Bayes decision boundaries, we expect QDA to generally perform better than LDA.
 ```{r, message=FALSE}
-##Crteate functions for data and different number of sims
+##Create functions for data and different number of sims
 
 create_data_NL <- function(){
 x1 <- runif(1000, -1, 1)
@@ -335,11 +334,12 @@ ggplot(final_results_NL) +
        y = "Frequency",
        legend = "Model")
 ```
-The graph supports the notion that QDA models are preferable in cases on non-linear Bayes decision boundaries.
+This result is demonstrated more clearly. The graph supports the notion that QDA models are preferable in cases on non-linear Bayes decision boundaries, as evidenced by the lower error rates.
 
 ## Question 4.
 ###A. 
-As the sample size increases, we generally expect QDA to be preferable in large n cases as the test error rate will improve compared to LDA. Even though QDA models are prone to higher variance, that concern in minimized with larger sample sizes.
+We generally expect QDA to be preferable in large n cases, and the test error rate will improve compared to LDA. Even though QDA models are prone to higher variance, that concern is minimized with larger sample sizes.
+
 ```{r, warning=FALSE, message=FALSE}
 create_data_NL_100 <- function(){
 x1 <- runif(100, -1, 1)
@@ -585,11 +585,10 @@ final_results_NL_100000 <- final_results_NL_100000 %>%
 ###B.
 
 ```{r}
-final_results_NL_100
 cols <- c("LDA Test Error (1000)" = "aquamarine3", "QDA Test Error (1000)" = "aquamarine4",
           "LDA Test Error (100)" = "tomato1", "QDA Test Error (100)" = "tomato4",
           "LDA Test Error (10000)" = "gray70", "QDA Test Error (10000)" = "grey45",
-          "LDA Test Error (100000)" = "green", "QDA Test Error (10000)" = "green4")
+          "LDA Test Error (100000)" = "green", "QDA Test Error (100000)" = "green4")
 ggplot() +
   geom_density(data = final_results_NL, mapping = aes(`LDA Test Error`, color = "LDA Test Error (1000)"), alpha = .25) +
   geom_vline(data = final_results_NL, mapping = aes(xintercept = mean(`LDA Test Error`), color = "LDA Test Error (1000)"), size = 1.2) +
@@ -612,10 +611,12 @@ ggplot() +
        subtitle = "Mean denoted by vertical line",
        x = "Error Rate",
        y = "Frequency",
-       legend = "Model")
+       legend = "Model") +
+  ylim(0,60) +
+  xlim(.15, .4)
 ```
 
-We can observe above that QDA performs better as the sample size increases. In the alrgest sample size above, the LDA model (light green) has a larger error rate than the QDA model (dark green).
+We can observe above that QDA performs better as the sample size increases. In the largest sample size above, the LDA model (light green) has a higher error rate than the QDA model (dark green).
 
 ##Question 5. Voter Turnout
 
@@ -713,7 +714,6 @@ mse_knn_mh <- tibble(k = 1:10,
                   err_train = map_dbl(knn_train, ~ mean(test_mh$vote96 != .)),
                   err_test = map_dbl(knn_test, ~ mean(test_mh$vote96 != .)))
 
-mse_knn_mh
 
 ```
 
@@ -724,18 +724,18 @@ mse_knn_mh
   - Naive Bayes: `r nb_error`
   - KNN (nnumber of neighbors):
     - 1: `r mse_knn_mh$err_test[1]`
-    - 2:`r mse_knn_mh$err_test[2]`
-    - 3:`r mse_knn_mh$err_test[3]`
-    - 4:`r mse_knn_mh$err_test[4]`
-    - 5:`r mse_knn_mh$err_test[5]`
-    - 6:`r mse_knn_mh$err_test[6]`
-    - 7:`r mse_knn_mh$err_test[7]`
-    - 8:`r mse_knn_mh$err_test[8]`
-    - 9:`r mse_knn_mh$err_test[9]`
-    - 10:`r mse_knn_mh$err_test[10]`
+    - 2: `r mse_knn_mh$err_test[2]`
+    - 3: `r mse_knn_mh$err_test[3]`
+    - 4: `r mse_knn_mh$err_test[4]`
+    - 5: `r mse_knn_mh$err_test[5]`
+    - 6: `r mse_knn_mh$err_test[6]`
+    - 7: `r mse_knn_mh$err_test[7]`
+    - 8: `r mse_knn_mh$err_test[8]`
+    - 9: `r mse_knn_mh$err_test[9]`
+    - 10: `r mse_knn_mh$err_test[10]`
   
 ###C.ii. ROC/AOC
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(pROC)
 #Logit
 
@@ -775,14 +775,14 @@ return(knn_auc1)
   - Naive Bayes: `r nb_auc`
   - KNN (number of neighbors):
     - 1: `r knn_aoc(1)`
-    - 2:`r knn_aoc(2)`
-    - 3:`r knn_aoc(3)`
-    - 4:`r knn_aoc(4)`
-    - 5:`r knn_aoc(5)`
-    - 6:`r knn_aoc(6)`
-    - 7:`r knn_aoc(7)`
-    - 8:`r knn_aoc(8)`
-    - 9:`r knn_aoc(9)`
-    - 10:`r knn_aoc(10)`
+    - 2: `r knn_aoc(2)`
+    - 3: `r knn_aoc(3)`
+    - 4: `r knn_aoc(4)`
+    - 5: `r knn_aoc(5)`
+    - 6: `r knn_aoc(6)`
+    - 7: `r knn_aoc(7)`
+    - 8: `r knn_aoc(8)`
+    - 9: `r knn_aoc(9)`
+    - 10: `r knn_aoc(10)`
 
-The KNN model with 7 nearest neighbors performs the best, as indicated by its higher AOC score. By best, I mean that it has the highest AOC value (compare true positives against false positives) and thus has the strongest predictive power.
+I would argue that the KNN model with 9 nearest neighbors performs the best, as indicated by its high AOC score and its low error rate (the lowest of all the models). By best, I am considering the predictive power of the model as indicated by both the error rate and AOC, and KNN with 9 neighbors performs well in both instances.
