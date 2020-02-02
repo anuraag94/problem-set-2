@@ -13,6 +13,9 @@ library(rsample)
 library(MASS)
 library(e1071)
 library(caret)
+library(class)
+library(pROC)
+library("RColorBrewer")
 
 theme_set(
   theme_bw()+
@@ -70,7 +73,8 @@ ggplot() +
     labs(title = "Bayes Decision Boundary", 
          x = "variable 1", 
          y = "variable 2",
-         color = "class") 
+         color = "class")  +
+    scale_color_brewer(palette = "Set1")
 ```
 
 2. (20 points) If the Bayes decision boundary is linear, do we expect LDA or QDA to perform better on the training set? On the test set?
@@ -137,7 +141,8 @@ linear %>% pivot_longer(
 ) %>% 
     ggplot(aes(x = `error rate`, fill = model)) +
     geom_density(alpha = 0.7) +
-    facet_wrap(~data)
+    facet_wrap(~data) +
+    scale_fill_brewer(palette = "Set1")
 
 ```
     
@@ -200,7 +205,8 @@ non_linear %>% pivot_longer(
 ) %>% 
     ggplot(aes(x = `error rate`, fill = model)) +
     geom_density(alpha = 0.7) +
-    facet_wrap(~data)
+    facet_wrap(~data) +
+    scale_fill_brewer(palette = "Set1")
     
 ```
 
@@ -210,6 +216,49 @@ non_linear %>% pivot_longer(
     b. Plot the test error rate for the LDA and QDA models as it changes over all of these values of $n$. _Use this graph to support your answer._
     
 ```{r}
+
+sample_size <- c(100, 1000, 10000, 100000)
+
+non_linear_diff_N <- data.frame(matrix(nrow = 0, ncol = 0))
+
+for (i in seq_along(sample_size)){
+    
+    non_linear_simu <- data.frame(matrix(nrow = 0, ncol = 0))
+    for (r in 1: repetition){
+        
+        N <- sample_size[i]
+        sample <- data.frame(x1 = runif(N, -1, 1),
+                         x2 = runif(N, -1, 1),
+                         epsilon = rnorm(N, mean = 0, sd =1)) %>%
+            mutate(y = x1 + x1^2 + x2 + x2^2 + epsilon,
+                   class = y >= 0)
+    
+        split <- initial_split(sample, prop = .7)
+        train <- training(split)
+        test <- testing(split)
+    
+        lda <- lda(class ~ x1 + x1^2 + x2 + x2^2, data = train)
+        lda_test_error <- error_rate(lda, test, "class")
+    
+        qda <- qda(class ~ x1 + x1^2 + x2 + x2^2, data = train)
+        qda_test_error <- error_rate(qda, test, "class")
+    
+        id <- i
+        result <- data.frame(id, lda_test_error, qda_test_error, N)
+        non_linear_simu <- bind_rows(non_linear_simu, result)
+    }
+    non_linear_diff_N <- bind_rows(non_linear_diff_N, non_linear_simu)
+}
+non_linear_diff_N %>%
+    pivot_longer(cols = ends_with("error"),
+                 names_to = "model",
+                 names_pattern = "(.*)_test_error",
+                 values_to = "error") %>%
+    ggplot(aes(x = error, fill = model)) +
+    geom_density(alpha = 0.7) +
+    facet_wrap(~N, scales = "free") +
+    scale_fill_brewer(palette = "Set1")
+
 ```
     
 ### Modeling voter turnout
@@ -228,19 +277,76 @@ non_linear %>% pivot_longer(
     d. Which model performs the best? Be sure to define what you mean by "best" and identify supporting evidence to support your conclusion(s).
 
 ```{r}
-mental_health <- read_csv("mental_health.csv")
+mental_health <- read_csv("mental_health.csv") %>%
+    drop_na()
 split <- initial_split(mental_health, prop = .7)
 train <- training(split)
 test <- testing(split)
 
 # logistics regression
 logit <- glm(vote96~., train, family = "binomial")
+logit_predict <- as.numeric(predict(logit, test) > 0.5)
+
 #lda
 lda <- lda(vote96~., train)
+lda_predict <- predict(lda, test)[["class"]] 
+
 #qda 
 qda <- qda(vote96~., train)
-#naive bayes
-bayes <- naiveBayes(vote96~., train)
-#knn 1- 10
+qda_predict <-predict(qda, test)[["class"]] 
 
+#naive bayes
+bayes <- naiveBayes(as.factor(vote96)~., train)
+bayes_predict <- predict(bayes, test, type = "class") 
+
+
+#knn 1- 10
+knn_mse <- tibble(k = 1:10,
+                  knn_predict = map(k, ~ knn(dplyr::select(train, -vote96),
+                                          test = dplyr::select(test, -vote96),
+                                          cl = train$vote96, k = .)))
+
+roc_info <- roc(test$vote96, predict(logit, test), plot = TRUE,legacy.axes = TRUE)
+roc_df <- data.frame(tp = roc_info$sensitivities,
+                     fp = 1 - roc_info$specificities)
+
+model_mse <- knn_mse %>%
+    mutate(k = paste0("knn", k)) %>%
+    `colnames<-`(c("model", "predict")) %>%
+    bind_rows(tibble(model = "logit", predict = list(logit_predict))) %>%
+    bind_rows(tibble(model = "lda", predict = list(lda_predict))) %>%
+    bind_rows(tibble(model = "qda", predict = list(qda_predict))) %>%
+    bind_rows(tibble(model = "bayes", predict = list(bayes_predict)))  %>%
+    mutate(predict = map(predict, ~ as.numeric(as.character(.))),
+           mse = map_dbl(predict, ~mean(test$vote96!=.)))
+
+```
+
+```{r, fig.height=10, fig.width=10}
+roc_plot_prep <- data.frame(matrix(nrow = 0, ncol = 0))
+
+for (i in 1:dim(model_mse)[1]){
+    model <- model_mse$model[i]
+    roc_info <- roc(test$vote96, model_mse$predict[[i]], legacy.axes = TRUE)
+    roc_df <- tibble(model = model, 
+                     tp = roc_info$sensitivities,
+                     fp = 1 - roc_info$specificities,
+                     auc = as.numeric(roc_info$auc))
+    roc_plot_prep <- bind_rows(roc_plot_prep, roc_df)
+    
+    model_mse$auc[i] <- as.numeric(roc_info$auc)
+}
+
+roc_plot_prep %>% 
+    mutate(auc = ifelse(tp ==0, auc, NA),
+           model = factor(model, levels = c("logit", "lda", "qda", "bayes", paste0("knn", 1:10)))) %>%
+    ggplot(aes(x = fp, y = tp, color = model)) +
+    geom_line(size = 1.5) +
+    facet_wrap(~model) +
+    geom_line(data = rename(roc_plot_prep, model2 = model),
+              aes(x = fp, y = tp, group  = model2), alpha = .3, size = 1, color = "grey50") +
+    geom_label(aes(label = paste("AUC =", round(auc, 4))), 
+            x = Inf, y = -Inf, hjust = 1, vjust = 0,
+            inherit.aes = FALSE) +
+    theme(legend.position = "none")
 ```
