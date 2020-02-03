@@ -1,0 +1,362 @@
+---
+title: "Catipon_Regina_HW2"
+author: "Regina Catipon"
+date: "1/28/2020"
+output:
+  word_document: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+library(tidyverse)
+library(broom) 
+library(rsample) 
+library(patchwork) #
+library(corrplot)
+library(dplyr)
+library(ISLR)
+library(caret)
+library(knitr)
+library(titanic) 
+library(rcfss) 
+library(tidymodels)
+library(pROC)
+```
+
+## The Bayes Classifier
+```{r bayes}
+# set random seed
+set.seed(1234)
+theme_set(theme_minimal())
+
+# Simulate a dataset of N = 200 with X1, X2 where X1, X2 are random uniform variables between [−1, 1].
+
+x1 = runif(n = 100, min = -1, max = 1)
+x2 = runif(n = 100, min = -1, max = 1)
+
+Q_1 <- tibble(x1, x2)
+
+# CalculateY = X1+X12+X2+X2+ε, where ε∼N (μ=0,σ2 =0.25).
+Q_1$epsilon <- rnorm(100, 0, .5)
+
+Q_1$y = Q_1$x1 + (Q_1$x1^2) + Q_1$x2 + (Q_1$x2^2) + Q_1$epsilon
+
+
+# Y is defined in terms of the log-odds of success on the domain [−∞, +∞]. Calculate the probability of success bounded between [0, 1].
+
+# Logodds to probabilities
+Q_1$yprob = exp(Q_1$y)/(1 + exp(Q_1$y))
+
+# Probabilites to classify
+Q_1$yinput = (Q_1$yprob > 0.5)
+#returns true or false, needs to be 1s or 0s
+
+# Plot each of the data points on a graph and use color to indicate if the observation was a success or a failure.
+
+ggplot(Q_1, aes(x1, x2, col=yinput)) + 
+  geom_point(aes(col = Q_1$yinput)) +
+  labs(title = 'Bayes Classification',
+       x = "x1",
+       y = "x2") + 
+  scale_color_discrete(name = 'Success')
+
+  
+#  Overlay the plot with Bayes decision boundary, calculated using X1,X2.
+
+split <- initial_split(Q_1, prop = .7) 
+train <- training(split)
+test <- testing(split)
+
+#x <- train[, c('x1','x2')]
+#y <- train$yinput
+
+##
+line <- seq(-1,1,length.out = 250)
+gridplot <- expand.grid(x1=line, x2=line)
+
+x <- Q_1[, c('x1','x2')] #new x
+y <- Q_1$yinput #new y
+Q_train <- cbind(x, y)
+y <- as.character(y)
+
+train_control <- trainControl(
+  method = "cv",
+  number = 10
+)
+
+nb <- train(
+  x = x,
+  y = y,
+  method = "nb",
+)
+
+gridplot$prediction <- predict(nb, newdata=gridplot)
+
+# plot
+
+ggplot(Q_train) + 
+  geom_point(aes(x=x$x1, y = x$x2, col = y)) +
+  geom_contour(data = gridplot, 
+               aes(x1, x2, z=as.numeric(prediction)))+
+  labs(title = "Bayes Classification Decision Boundary") + 
+  scale_color_discrete(name = 'Success')
+
+
+```
+
+
+
+## Exploring Simulated Differences between LDA and QDA
+
+2. (20 points) If the Bayes decision boundary is linear, do we expect LDA or QDA to perform better on the training set? On the test set?
+
+```{r Data}
+#i.
+
+x1 = runif(n = 1000, min = -1, max = 1)
+x2 = runif(n = 1000, min = -1, max = 1)
+
+sim <- tibble(x1, x2)
+
+sim$epsilon <- rnorm(1000, 0, 1)
+sim$main = sim$x1 + sim$x2
+sim$y <- sim$main > 0 
+sim$y_sim = sim$y + sim$epsilon > 0
+
+# ii. Randomly split your dataset into 70/30% training/test sets. 
+split_1 <- initial_split(simulate, prop = .7) 
+train_1 <- training(split)
+test_1 <- testing(split)
+
+# iii. 
+# Linear discriminant model
+lda <- MASS::lda(sim$y_sim ~ x1 + x2, data = train_1)
+
+# Quadratic discriminant model
+qda <- MASS::qda(sim$y_sim ~ x1 + x2, data = train_1)
+
+# iv. Test and train error rates
+
+lda_train_err <- 1 - sum(predict(lda, train_1)$class == train_1$y / length(train_1$y))
+
+lda_test_err <- 1 - sum(predict(lda, test_1)$class == test_1$y / length(test_1$y))
+
+
+qda_train_err <- 1 - sum(predict(qda, train_1)$class == train_1$y / length(train_1$y))
+  
+qda_test_err <- 1 - sum(predict(qda, test_1)$class == train$y / length(train$y))
+
+## b.
+
+summary(lda_train_err)
+summary(lda_test_err)
+summary(qda_train_err)
+summary(qda_test_err)
+
+
+
+```
+
+ b. I clearly did not get the right results from my models.However, I would expect the the QDA to perform better for this dataset.
+ 
+ 
+3. (20 points) If the Bayes decision boundary is non-linear, do we expect LDA or QDA to perform better on the training set? On the test set?
+
+```{r Bayes non-linear}
+# a. Repeat the following process 1000 times.
+#   i. simulate data
+
+x_1 = runif(n = 1000, min = -1, max = 1)
+x_2 = runif(n = 1000, min = -1, max = 1)
+
+sim2 <- tibble(x_1, x_2, )
+
+sim2$epsilon <- rnorm(1000, 0, 1)
+
+sim2$main <- sim2$x_1 + sim2$x_1^2 + sim2$x_2 + sim2$x_2^2
+
+
+#    ii. Randomly split your dataset into 70/30% training/test sets.
+sim2$main = sim2$x_1 + sim2$x_2
+
+sim2$y <- sim2$main > 0 
+sim2$y_sim = sim2$y + sim2$epsilon > 0
+
+
+split <- initial_split(sim2, prop = .7) 
+train <- training(split)
+test <- testing(split)
+
+
+#    iii. Use the training dataset to estimate LDA and QDA models.
+
+# Linear discriminant model
+lda <- MASS::lda(sim2$y_sim ~ sim2$x_1  + sim2$x_2, data = train)
+pred_lda_train <- predict(lda, data = train, type ="prob")
+pred_ldaa_test <- predict(lda, newdata = train)
+
+
+# Quadratic discriminant model
+qda <- MASS::qda(sim$y_sim ~ sim2$x_1  + sim2$x_2, data = train)
+pred_qda_train <- predict(qda, data = train, type ="prob")
+pred_qda_test <- predict(qda, newdata = test)
+
+#    iv. Calculate each model’s training and test error rate.
+
+train_error <- train %>%
+  summarise(lda.train.err = mean(train$y != pred_qda_train$class))
+
+# b. Summarize all the simulations’ error rates and report the results in tabular and graphical form. Use this evidence to support your answer.
+
+```
+
+
+4. (20 points) In general, as sample size n increases, do we expect the test error rate of QDA relative to LDA to improve, decline, or be unchanged? Why?
+  a. Use the non-linear Bayes decision boundary approach from part (2) and vary n across your simulations (e.g., simulate 1000 times for n = c(1e02, 1e03, 1e04, 1e05).
+  b. Plot the test error rate for the LDA and QDA models as it changes over all of these values of n. Use this graph to support your answer.
+  
+```{r sample size}
+
+# a. Use the non-linear Bayes decision boundary approach from part (2) and vary n across your simulations (e.g., simulate 1000 times for n = c(1e02, 1e03, 1e04, 1e05).
+n = c(1e02, 1e03, 1e04, 1e05)
+x1 = runif(n, min = -1, max = 1)
+x2 = runif(n, min = -1, max = 1)
+
+simulate <- tibble(x1, x2)
+
+y <- x1 + x1^2 + x2 +x^2 + rnorm(n, 0, 1)
+simulate$y <- y > 0
+
+#    ii. Randomly split your dataset into 70/30% training/test sets.
+
+split <- initial_split(sim2, prop = .7) 
+train <- training(split)
+test <- testing(split)
+
+sim2$main = sim2$x_1 + sim2$x_2
+
+sim2$y <- sim2$main > 0 
+sim2$y_sim = sim2$y + sim2$epsilon > 0
+
+#    iii. Use the training dataset to estimate LDA and QDA models.
+
+# Linear discriminant model
+lda <- MASS::lda(sim2$y_sim ~ sim2$x_1  + sim2$x_2, data = train)
+
+# Quadratic discriminant model
+qda <- MASS::qda(sim$y_sim ~ sim2$x_1  + sim2$x_2, data = train)
+
+
+#    iv. Calculate each model’s training and test error rate.
+lda_train_err <- 1 - sum(predict(lda, train)$class == train$y / length(train$y))
+
+lda_test_err <- 1 - sum(predict(lda, test)$class == test$y / length(test$y))
+
+
+qda_train_err <- 1 - sum(predict(qda, train)$class == train$y / length(train$y))
+  
+qda_test_err <- 1 - sum(predict(qda, test)$class == train$y / length(train$y))
+
+# b. Summarize all the simulations’ error rates and report the results in tabular and graphical form. Use this evidence to support your answer.
+
+summary(lda_train_err)
+summary(lda_test_err)
+
+summary(qda_train_err)
+summary(qda_test_err)
+
+```
+
+
+## Modeling Voter Turnout
+
+```{r voter turnout}
+
+mental_health <- read_csv("mental_health.csv")
+glimpse(mental_health)
+mental_health <- na.omit(mental_health)
+
+## a. Split the data into a training and test set (70/30).
+split_mental <- initial_split(mental_health, prop = .7) 
+train_mental <- training(split_mental)
+test_mental <- testing(split_mental)
+
+## b. Using the training set and all important predictors, estimate the following models with vote96 as the response variable:
+
+# The important predictors, looking for correlation:
+train_mental %>%
+  filter(train_mental$vote96 == 1) %>%
+  select_if(is.numeric) %>%
+  cor() %>%
+  corrplot::corrplot()
+
+# Looks like age, education, mhealth might be predictors
+# How to evaluate for predictor quality?
+
+# i. Logistic regression model
+logit_mental <- glm(vote96 ~ ., data = train_mental, family = binomial)
+
+
+# ii. Linear discriminant model
+lda_mental <- MASS::lda(vote96~., data =train_mental)
+
+
+# iii. Quadratic discriminant model
+qda_mental <- MASS::qda(vote96~., data =train_mental)
+
+# iv. Naive Bayes (you can use the default hyperparameter settings)
+
+features_mental <- setdiff(names(train), "vote96") #setdiff(x,y) elements in x but not in y
+#nb_x_mental <- train_mental[, features_mental]
+nb_x_mental <- train_mental[-1]
+nb_y_mental <- train_mental$vote96
+
+nb_mental <- train(
+  x = train_mental[-1],
+  y = train_mental$vote96,
+  method = "nb"
+)
+
+
+# v. K-nearest neighbors with K = 1,2,...,10 (that is, 10 separate models varying K) and Euclidean distance metrics
+
+ctrl <- trainControl(method="repeatedcv",repeats = 10) #,classProbs=TRUE,summaryFunction = twoClassSummary)
+knnFit_mental <- train(vote96 ~ ., data = train_mental, method = "knn", trControl = ctrl)
+
+#Output of kNN fit
+knnFit_mental
+
+
+
+## c. Using the test set, calculate the following model performance metrics: 
+#  i. Error rate
+#  
+#E1 <- sum(y != median(y))
+#E2 <- sum(y != y.hat)
+
+# mental_logit, nb_mental, lda_mental, qda_mental, knnFit_mental
+
+
+# ii. ROC curve(s) / Area under the curve (AUC)
+library(pROC)
+# roc_x <- roc(x_accuracy$vote96, x_accuracy$prob)
+#plot(roc_x)   # use pROC to draw the ROC curve
+
+# calculate the AUC
+#auc_x <- auc(x_accuracy$vote96, x_accuracy$prob)
+#auc_x
+
+
+## d. Which model performs the best? Be sure to define what you mean by “best” and identify supporting evidence to support your conclusion(s).
+
+
+
+
+
+```
