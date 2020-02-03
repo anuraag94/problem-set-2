@@ -2,11 +2,13 @@
 title: "Modeling PS2"
 author: "borui sun"
 date: "1/28/2020"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE, warning = FALSE)
 library(tidyverse)
 library(dplyr)
 library(rsample)
@@ -16,6 +18,7 @@ library(caret)
 library(class)
 library(pROC)
 library("RColorBrewer")
+library(knitr)
 
 theme_set(
   theme_bw()+
@@ -63,14 +66,14 @@ simu_sample <- data.frame(
 
 bayes <- naiveBayes(as.factor(class) ~ x1 + x2, simu_sample)
 
-sample_grid<- expand.grid(x1 = seq(-1, 1, length.out = 40), x2 = seq(-1, 1, length.out = 40)) %>%
-    mutate(class = predict(bayes, sample_grid, type = "class"))
+sample_grid <- expand.grid(x1 = seq(-1, 1, length.out = 40), x2 = seq(-1, 1, length.out = 40))
+sample_grid$class <- predict(bayes, sample_grid, type = "class")
 
 ggplot() + 
     geom_point(data = sample_grid, aes(x = x1, y = x2, color = as.factor(class)), alpha = 0.5, size = 0.5) +
     geom_point(data = simu_sample, aes(x = x1, y = x2, color =  as.factor(class))) +
     geom_contour(data = sample_grid, aes(x = x1, y = x2, z = as.numeric(class)),  bins = 2, binwidth = 0.01) +
-    labs(title = "Bayes Decision Boundary", 
+    labs(title = "Fig.1 Bayes Decision Boundary", 
          x = "variable 1", 
          y = "variable 2",
          color = "class")  +
@@ -88,6 +91,8 @@ ggplot() +
     b. Summarize all the simulations' error rates and report the results in tabular and graphical form. Use this evidence to support your answer.
 
 ```{r}
+set.seed(234)
+
 error_rate <- function(model, data, outcome){
     
     accuracy <- predict(model, data) %>%
@@ -131,8 +136,8 @@ for (i in 1: repetition){
                                     qda_train_error, qda_test_error)
     linear <- bind_rows(linear, result)
 }
-
-
+```
+```{r}
 linear %>% pivot_longer(
     cols = ends_with("error"),
     names_to = c("model", "data"),
@@ -142,13 +147,22 @@ linear %>% pivot_longer(
     ggplot(aes(x = `error rate`, fill = model)) +
     geom_density(alpha = 0.7) +
     facet_wrap(~data) +
-    scale_fill_brewer(palette = "Set1")
-
+    scale_fill_brewer(palette = "Set1") +
+    labs(title = "Fig.2 LDA and QDA Error Rate (Linear Decision Boundary)")
 ```
     
 ```{r}
-summary(linear)
+summary(linear[,2:5]) %>% kable()
+
+cat(paste0("LDA Train Variance: ", var(linear$lda_train_error), "\n",
+           "QDA Train Variance: ", var(linear$qda_train_error), "\n",
+           "LDA Test Variance: ", var(linear$lda_test_error), "\n",
+           "QDA Test Variance: ", var(linear$qda_test_error)))
 ```
+
+We expects that LDA would perform better than QDA when the decision boundary is linear.
+
+Based on Fig.2 and the descriptive summary above, we can see that LDA and QDA perform roughly the same. However, QDA has a slightly smaller error rate (mean: 0.2722, median: 0.2714) than LDA (mean: 0.2731, median: 0.2729) on when fitting to the training data set, but when fitting to the test data set, the average error rate of QDA (mean: 0.277) is slightly larger than the average error rate of LDA. This supports our expectation. While QDA is more flexible than LDA, it also captures more noises and tends to overfitting. This explains why QDA has lower error rate in the training but high error rate in the test data set. LDA, while less flexible, is more consistant and thus has lower variance in the test data set.  
 
 
 3. (20 points) If the Bayes decision boundary is non-linear, do we expect LDA or QDA to perform better on the training set? On the test set?
@@ -162,6 +176,8 @@ summary(linear)
     b. Summarize all the simulations' error rates and report the results in tabular and graphical form. Use this evidence to support your answer.
     
 ```{r}
+set.seed(345)
+
 non_linear <- data.frame(matrix(nrow = 0, ncol = 0))
 
 for (i in 1: repetition){
@@ -194,9 +210,8 @@ for (i in 1: repetition){
     
     non_linear <- bind_rows(non_linear, result)
 }
-
-summary(non_linear)
-
+```
+```{r}
 non_linear %>% pivot_longer(
     cols = ends_with("error"),
     names_to = c("model", "data"),
@@ -206,16 +221,28 @@ non_linear %>% pivot_longer(
     ggplot(aes(x = `error rate`, fill = model)) +
     geom_density(alpha = 0.7) +
     facet_wrap(~data) +
-    scale_fill_brewer(palette = "Set1")
+    scale_fill_brewer(palette = "Set1") +
+    labs(title = "Fig.3 LDA and QDA Error Rate(Non-linear Decision Boundary)")
     
 ```
+```{r}
+summary(non_linear[, 2:5]) %>% kable()
+cat(paste0("LDA Train Variance: ", var(non_linear$lda_train_error), "\n",
+           "QDA Train Variance: ", var(non_linear$qda_train_error), "\n",
+           "LDA Test Variance: ", var(non_linear$lda_test_error), "\n",
+           "QDA Test Variance: ", var(non_linear$qda_test_error)))
+```
 
+We expect that QDA would perform better when the decision boundary is not linear.
+
+Fig. 3 and the descriptive summary above well support our expectation. When the decision boundary is quadratic, the less flexible LDA model fails to capture the non-linear relationship. In both training and test data set, the error rate of QDA model is substantially less than the error rate of LDA model in every aspect (e.g. minimum value, maximum value, mean, median, variance). 
 
 4. (20 points) In general, as sample size $n$ increases, do we expect the test error rate of QDA relative to LDA to improve, decline, or be unchanged? Why?
     a. Use the non-linear Bayes decision boundary approach from part (2) and vary $n$ across your simulations (e.g., simulate 1000 times for `n = c(1e02, 1e03, 1e04, 1e05`).
     b. Plot the test error rate for the LDA and QDA models as it changes over all of these values of $n$. _Use this graph to support your answer._
     
 ```{r}
+set.seed(456)
 
 sample_size <- c(100, 1000, 10000, 100000)
 
@@ -249,6 +276,8 @@ for (i in seq_along(sample_size)){
     }
     non_linear_diff_N <- bind_rows(non_linear_diff_N, non_linear_simu)
 }
+```
+```{r}
 non_linear_diff_N %>%
     pivot_longer(cols = ends_with("error"),
                  names_to = "model",
@@ -257,10 +286,15 @@ non_linear_diff_N %>%
     ggplot(aes(x = error, fill = model)) +
     geom_density(alpha = 0.7) +
     facet_wrap(~N, scales = "free") +
-    scale_fill_brewer(palette = "Set1")
-
+    scale_fill_brewer(palette = "Set1") +
+    labs(title = "Fig.4 LDA and QDA Error Rate(Non-linear Decision Boundary)", 
+         subtitle = "with Different Sample Size")
 ```
     
+As the sample size increases, we expect that the test error rate of QDA relative to LDA would improve because the larger number of observations we have, the more flexible model we can afford to fit the data. 
+
+As shown in Fig.4, overall QDA has a lower error rate than LDA when decision boundary is non-linear. However, when we only have 100 number of observations, the distribution of error rate for both LDA and QDA overlapps substantially, but as sample size increases, the gap between the two distributions also increases. As sample size increases to 10,000, there is only a small area overlapps between them. The QDA overfitting problem becomes less severe and QDA fits better when the relationship is non-linear as our sample size increases. 
+
 ### Modeling voter turnout
 
 5. (20 points) Building several classifiers and comparing output.
@@ -277,6 +311,8 @@ non_linear_diff_N %>%
     d. Which model performs the best? Be sure to define what you mean by "best" and identify supporting evidence to support your conclusion(s).
 
 ```{r}
+set.seed(102)
+
 mental_health <- read_csv("mental_health.csv") %>%
     drop_na()
 split <- initial_split(mental_health, prop = .7)
@@ -285,19 +321,19 @@ test <- testing(split)
 
 # logistics regression
 logit <- glm(vote96~., train, family = "binomial")
-logit_predict <- as.numeric(predict(logit, test) > 0.5)
+logit_predict <- predict(logit, test)
 
 #lda
 lda <- lda(vote96~., train)
-lda_predict <- predict(lda, test)[["class"]] 
+lda_predict <- predict(lda, test)[["posterior"]][,2]
 
 #qda 
 qda <- qda(vote96~., train)
-qda_predict <-predict(qda, test)[["class"]] 
+qda_predict <-predict(qda, test)[["posterior"]][,2]
 
 #naive bayes
 bayes <- naiveBayes(as.factor(vote96)~., train)
-bayes_predict <- predict(bayes, test, type = "class") 
+bayes_predict <- predict(bayes, test, type = "raw")[,2] 
 
 
 #knn 1- 10
@@ -305,11 +341,6 @@ knn_mse <- tibble(k = 1:10,
                   knn_predict = map(k, ~ knn(dplyr::select(train, -vote96),
                                           test = dplyr::select(test, -vote96),
                                           cl = train$vote96, k = .)))
-
-roc_info <- roc(test$vote96, predict(logit, test), plot = TRUE,legacy.axes = TRUE)
-roc_df <- data.frame(tp = roc_info$sensitivities,
-                     fp = 1 - roc_info$specificities)
-
 model_mse <- knn_mse %>%
     mutate(k = paste0("knn", k)) %>%
     `colnames<-`(c("model", "predict")) %>%
@@ -317,9 +348,7 @@ model_mse <- knn_mse %>%
     bind_rows(tibble(model = "lda", predict = list(lda_predict))) %>%
     bind_rows(tibble(model = "qda", predict = list(qda_predict))) %>%
     bind_rows(tibble(model = "bayes", predict = list(bayes_predict)))  %>%
-    mutate(predict = map(predict, ~ as.numeric(as.character(.))),
-           mse = map_dbl(predict, ~mean(test$vote96!=.)))
-
+    mutate(predict = map(predict, ~ as.numeric(as.character(.))))
 ```
 
 ```{r, fig.height=10, fig.width=10}
@@ -341,12 +370,30 @@ roc_plot_prep %>%
     mutate(auc = ifelse(tp ==0, auc, NA),
            model = factor(model, levels = c("logit", "lda", "qda", "bayes", paste0("knn", 1:10)))) %>%
     ggplot(aes(x = fp, y = tp, color = model)) +
-    geom_line(size = 1.5) +
+    geom_line(size = 1) +
     facet_wrap(~model) +
     geom_line(data = rename(roc_plot_prep, model2 = model),
               aes(x = fp, y = tp, group  = model2), alpha = .3, size = 1, color = "grey50") +
     geom_label(aes(label = paste("AUC =", round(auc, 4))), 
             x = Inf, y = -Inf, hjust = 1, vjust = 0,
             inherit.aes = FALSE) +
-    theme(legend.position = "none")
+    theme(legend.position = "none") +
+    labs(title = "Fig. 5 ROC curve and AUC of Diffteret Models",
+         x = "1 - Specificity", y ="Sensitivity")
 ```
+```{r}
+# using 0.5 threshold
+model_mse %>% mutate(predict = map(predict, ~.>0.5),
+                     mse = map_dbl(predict, ~mean(test$vote96 != .))) %>%
+    dplyr::select(-predict) %>% kable()
+```
+
+The author defines that a "best" model is the one with a consistent, relatively high accuracy rate when fitting to a new dataset. That is, the "best" model does not necessarily need to have the lowest error rate but it must consistenly have a relatively good accuracy rate in a different train-test random split, or when fitting to a whole new data set. Based on Fig.5 and the MSE and AUc table reported above, logistic model performs best among the 14 models for the following reasons:
+
+* 1. Logistics has the lowest MSE under a threshold of 0.5 as well as the highest AUC. Since we did not adopt any resampling mechanism, a low error rate under a 0.5 threshold in this particular train-test split data set is NOT reliable even though in this case, logistics model has the highest accuracy. However, it could be possible that the classes in our training sample is highly imbalanced and hence using a 0.5 threshold is not appropriate. The highest AUC scores of logistics model indicates that it has an overall better performance than any other models we have for all values of a threshold. 
+    
+* 2. Regarding model consistency, since our result is solely based one training sample without any resampling method, the author is less inclined to select a non-parametric model because it is more flexible and hence more likely to overfit. For the same reason, QDA is also ruled out. 
+    
+* 3. Between Logistic, LDA and Bayes, the author choose Logistic model becasue 1) we have a combination of continuous and categorical independent variable (LDA and QDA operate on normally-distributed, continuous-valued features), 2) it relies on less assumptions (i.i.d assumption in Naive Bayes).
+    
+    
